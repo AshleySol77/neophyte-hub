@@ -924,6 +924,28 @@ function importBackup(file){
   reader.readAsText(file);
 }
 
+function formatDiaryEntryHtml(text){
+  const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = (text||'').split('\n');
+  return lines.map(line => {
+    if(!line.trim()) return '<div class="entry-blank">&nbsp;</div>';
+    // Строка практики: "10:00-10:05 LBRP – комментарий"
+    let m = line.match(/^(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})\s+(.+?)(?:\s+[–-]\s+(.*))?$/);
+    if(m){
+      const time = m[1], name = m[2], comment = m[3];
+      return `<div class="entry-line"><b>${esc(time)} ${esc(name)}</b>${comment ? ' – <i>'+esc(comment)+'</i>' : ''}</div>`;
+    }
+    // Строка "Поле: значение"
+    m = line.match(/^([A-Za-zА-Яа-яЁё .]+):\s*(.*)$/);
+    if(m){
+      const label = m[1], value = m[2];
+      return `<div class="entry-line"><b>${esc(label)}:</b>${value ? ' <i>'+esc(value)+'</i>' : ''}</div>`;
+    }
+    // Заголовочные строки (дата, астро-строка) — просто жирным
+    return `<div class="entry-line"><b>${esc(line)}</b></div>`;
+  }).join('');
+}
+
 function exportDiaryPrint(){
   const hist = state.diary.history;
   if(!hist.length){ alert('Архив дневника пуст — сначала сохраните хотя бы одну запись.'); return; }
@@ -931,16 +953,20 @@ function exportDiaryPrint(){
   const entriesHtml = hist.slice().reverse().map(h => `
     <div class="entry">
       <div class="entry-date">${esc((h.date||'').replace('T',' '))}</div>
-      <pre>${esc(h.text)}</pre>
+      <div class="entry-body">${formatDiaryEntryHtml(h.text)}</div>
     </div>
   `).join('');
   const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Magical Diary</title>
   <style>
-    body{font-family:Georgia,'Times New Roman',serif;max-width:680px;margin:40px auto;color:#111;line-height:1.5;}
-    h1{font-size:22px;border-bottom:1px solid #999;padding-bottom:10px;}
+    body{font-family:Georgia,'Times New Roman',serif;max-width:680px;margin:40px auto;color:#111;line-height:1.55;font-size:15px;}
+    h1{font-size:23px;border-bottom:1px solid #999;padding-bottom:10px;}
     .entry{margin-bottom:34px;page-break-inside:avoid;}
-    .entry-date{font-family:'Courier New',monospace;font-size:12px;color:#666;margin-bottom:6px;letter-spacing:0.04em;}
-    pre{white-space:pre-wrap;font-family:'Courier New',monospace;font-size:13px;margin:0;}
+    .entry-date{font-family:'Courier New',monospace;font-size:13px;font-weight:bold;color:#555;margin-bottom:8px;letter-spacing:0.04em;}
+    .entry-body{font-family:'Courier New',monospace;font-size:14.5px;}
+    .entry-line{margin:0 0 8px;}
+    .entry-line b{font-weight:700;}
+    .entry-line i{font-style:italic;color:#222;}
+    .entry-blank{height:4px;}
     @media print{ body{margin:0;} }
   </style></head><body>
   <h1>Magical Diary — Neophyte</h1>
