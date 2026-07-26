@@ -119,9 +119,7 @@
 
   .practice-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;}
   .practice-name{font-size:13.5px;}
-  .practice-count{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;}
-  .practice-count button{width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;line-height:1;}
-  .practice-count button:hover{border-color:var(--gold);color:var(--gold);}
+  .practice-count{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--gold);display:flex;align-items:center;gap:8px;min-width:22px;justify-content:flex-end;}
 
   .todo-list{list-style:none;padding:0;margin:0 0 10px;}
   .todo-list li{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);}
@@ -432,6 +430,7 @@
       <div class="subprogress" id="liberVIIStats">0/48 закреплено · 0% освоено</div>
 
       <div style="margin-top:16px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);">Liber O — практики</div>
+      <div style="font-size:12px;color:var(--text-dim);margin:2px 0 8px;">Считается автоматически по логу практик в архиве дневника — называйте практику в дневнике единообразно (например, «LBRP» или «МРП»), чтобы счёт был точным.</div>
       <div id="liberOList"></div>
 
       <div class="rule-note" style="margin-top:6px;">
@@ -837,6 +836,44 @@ const LIBER_O = [
   {id:'ex6', name:'Упражнение 6 (восхождение на Планы)'},
 ];
 
+// Ключевые слова/сокращения, по которым название практики в дневнике
+// сопоставляется с одним из шести пунктов Liber O. Сопоставление приблизительное
+// (по подстроке) — чем единообразнее называете практику в логе, тем точнее счёт.
+const LIBER_O_ALIASES = {
+  lbrp: ['lbrp', 'лбрп', 'мрп'],
+  lbrg: ['lbrg', 'лбрг', 'мрг'],
+  bmrp: ['брп', 'greater ritual.*pentagram', 'большой ритуал.*пентаграм'],
+  bmrg: ['брг', 'greater ritual.*hexagram', 'большой ритуал.*гексаграм'],
+  ex5: ['упражнение 5', 'ex5', 'exercise 5', 'тело света', 'астральн'],
+  ex6: ['упражнение 6', 'ex6', 'exercise 6', 'восхожд'],
+};
+
+function matchLiberOId(name){
+  const n = (name||'').toLowerCase();
+  for(const id of Object.keys(LIBER_O_ALIASES)){
+    for(const alias of LIBER_O_ALIASES[id]){
+      if(new RegExp(alias, 'i').test(n)) return id;
+    }
+  }
+  return null;
+}
+
+// Считаем практики Liber O напрямую по строкам архива дневника —
+// вида "10:00-10:05 LBRP – комментарий" — вместо ручного счётчика.
+function computeLiberOStatsFromDiary(){
+  const counts = Object.fromEntries(LIBER_O.map(p => [p.id, 0]));
+  const lineRe = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s+(.+?)(?:\s+[–-]\s+.*)?$/;
+  (state.diary.history || []).forEach(h => {
+    (h.text || '').split('\n').forEach(line => {
+      const m = line.match(lineRe);
+      if(!m) return;
+      const id = matchLiberOId(m[1]);
+      if(id) counts[id]++;
+    });
+  });
+  return counts;
+}
+
 function defaultState(){
   return {
     startDate: '',
@@ -1110,27 +1147,16 @@ function renderSphinx(){
 
 function renderLiberO(){
   const el = document.getElementById('liberOList');
+  const counts = computeLiberOStatsFromDiary();
+  state.liberO = counts;
   el.innerHTML = LIBER_O.map(p => `
     <div class="practice-grid">
       <div class="practice-name">${p.name}</div>
       <div class="practice-count">
-        <button data-dec="${p.id}">−</button>
-        <span id="cnt_${p.id}">${state.liberO[p.id]}</span>
-        <button data-inc="${p.id}">+</button>
+        <span id="cnt_${p.id}">${counts[p.id]}</span>
       </div>
     </div>
   `).join('');
-  el.querySelectorAll('[data-inc]').forEach(b=>b.addEventListener('click', e=>{
-    const id = e.target.dataset.inc;
-    state.liberO[id]++; document.getElementById('cnt_'+id).textContent = state.liberO[id];
-    queueSave(); renderOverall();
-  }));
-  el.querySelectorAll('[data-dec]').forEach(b=>b.addEventListener('click', e=>{
-    const id = e.target.dataset.dec;
-    state.liberO[id] = Math.max(0, state.liberO[id]-1);
-    document.getElementById('cnt_'+id).textContent = state.liberO[id];
-    queueSave(); renderOverall();
-  }));
 }
 
 function renderZelator(){
@@ -1266,6 +1292,7 @@ function renderDiaryArchive(){
   el.querySelectorAll('[data-ddel]').forEach(b=>b.addEventListener('click', e=>{
     state.diary.history.splice(+e.target.dataset.ddel, 1);
     queueSave(); renderDiaryArchive();
+    renderLiberO(); renderOverall();
   }));
 }
 
@@ -1386,6 +1413,7 @@ function bindDiary(){
     if(!text) return;
     state.diary.history.unshift({ id: Date.now(), date: document.getElementById('diaryDate').value, text });
     queueSave(); renderDiaryArchive();
+    renderLiberO(); renderOverall();
     flashSaveNote('добавлено в архив');
   });
 
@@ -1410,6 +1438,7 @@ function bindDiary(){
     const text = '[RU — не переведено]\n' + buildDiaryOutput(raw, meta);
     state.diary.history.unshift({ id: Date.now(), date: document.getElementById('diaryDate').value, text });
     queueSave(); renderDiaryArchive();
+    renderLiberO(); renderOverall();
     flashSaveNote('черновик сохранён');
   });
 
@@ -1421,7 +1450,8 @@ function renderOverall(){
   SPHINX.forEach(s=>{ total++; if(state.sphinx[s.id].done) done++; });
   total++; if(state.essay.done) done++;
   total++; if(state.liberVII.done) done++;
-  total += LIBER_O.length; done += LIBER_O.filter(p=>state.liberO[p.id]>0).length;
+  const liberOCounts = computeLiberOStatsFromDiary();
+  total += LIBER_O.length; done += LIBER_O.filter(p=>liberOCounts[p.id]>0).length;
   total++; if(state.astral.done) done++;
   total++; if(state.decl) done++;
   total++; if(state.pentacle.done) done++;
