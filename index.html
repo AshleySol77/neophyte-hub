@@ -86,6 +86,8 @@
   .card-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:#f2eee0;}
   .card-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);}
   .card-desc{font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;}
+  .backup-reminder{font-size:12.5px;color:var(--text-dim);margin-bottom:12px;padding:8px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;}
+  .backup-reminder.warn{color:var(--rust);border-color:var(--rust);}
 
   .check-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--line);}
   .check-row:first-of-type{border-top:none;}
@@ -554,6 +556,7 @@
     <div class="card">
       <div class="card-head"><span class="card-title">Резервная копия</span><span class="card-num">backup</span></div>
       <div class="card-desc">Данные хранятся локально в этом браузере (localStorage) и никуда не отправляются. Делайте бэкап регулярно — при очистке данных браузера или переходе на другое устройство локальные данные не сохранятся сами.</div>
+      <div id="backupReminder" class="backup-reminder"></div>
       <div class="add-row">
         <button id="backupExportBtn" style="flex:1;">Скачать бэкап (JSON)</button>
         <button id="backupImportBtn" style="flex:1;">Загрузить бэкап</button>
@@ -890,6 +893,41 @@ function queueSave(){
   }, 300);
 }
 
+const BACKUP_TS_KEY = 'aa-last-backup-ts';
+
+function daysWordRu(n){
+  const n10 = n % 10, n100 = n % 100;
+  if(n100 >= 11 && n100 <= 14) return 'дней';
+  if(n10 === 1) return 'день';
+  if(n10 >= 2 && n10 <= 4) return 'дня';
+  return 'дней';
+}
+
+function markBackupDone(){
+  try{ localStorage.setItem(BACKUP_TS_KEY, String(Date.now())); }catch(e){}
+  renderBackupReminder();
+}
+
+function renderBackupReminder(){
+  const el = document.getElementById('backupReminder');
+  if(!el) return;
+  let ts = null;
+  try{ ts = localStorage.getItem(BACKUP_TS_KEY); }catch(e){}
+  if(!ts){
+    el.textContent = 'Бэкап ещё ни разу не делали — самое время сохранить копию.';
+    el.className = 'backup-reminder warn';
+    return;
+  }
+  const days = Math.floor((Date.now() - Number(ts)) / 86400000);
+  if(days <= 0){
+    el.textContent = 'Последний бэкап: сегодня.';
+    el.className = 'backup-reminder';
+  } else {
+    el.textContent = `Последний бэкап: ${days} ${daysWordRu(days)} назад.`;
+    el.className = 'backup-reminder' + (days >= 14 ? ' warn' : '');
+  }
+}
+
 function exportBackup(){
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -898,6 +936,7 @@ function exportBackup(){
   a.href = url; a.download = `neophyte-backup-${stamp}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+  markBackupDone();
   flashSaveNote('бэкап скачан');
 }
 
@@ -915,6 +954,7 @@ function importBackup(file){
       state.diary.history = (parsed.diary && parsed.diary.history) || [];
       queueSave();
       render();
+      markBackupDone();
       flashSaveNote('бэкап загружен');
     }catch(err){
       console.error('import failed', err);
@@ -1493,6 +1533,7 @@ function render(){
   renderZelator();
   renderPhysical();
   bindDiary();
+  renderBackupReminder();
   renderArc();
   renderOverall();
   refreshChapterVStats();
