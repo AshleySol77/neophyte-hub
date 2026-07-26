@@ -433,9 +433,11 @@
       <div style="font-size:12px;color:var(--text-dim);margin:2px 0 8px;">Считается автоматически по логу практик в архиве дневника — называйте практику в дневнике единообразно (например, «LBRP» или «МРП»), чтобы счёт был точным.</div>
       <div id="liberOList"></div>
 
-      <div class="rule-note" style="margin-top:6px;">
-        <b>Liber HHH</b> — практика ведётся регулярно. Отдельного поля здесь нет: отмечайте каждую сессию
-        в логе практик дневника ниже — так предписание остаётся исполненным без дублирования записей.
+      <div style="margin-top:16px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);">Liber HHH — практика</div>
+      <div style="font-size:12px;color:var(--text-dim);margin:2px 0 8px;">Считается автоматически по логу практик в дневнике — записывайте сессию как «Liber HHH», «MMM», «AAA» или «SSS».</div>
+      <div class="practice-grid">
+        <div class="practice-name">Сессий записано</div>
+        <div class="practice-count"><span id="cnt_hhh">0</span></div>
       </div>
       <div class="rule-note">
         <b>Мантическая система</b> — Устав рекомендует Неофиту выбрать и практиковать одно из мантических искусств.
@@ -858,20 +860,40 @@ function matchLiberOId(name){
   return null;
 }
 
-// Считаем практики Liber O напрямую по строкам архива дневника —
-// вида "10:00-10:05 LBRP – комментарий" — вместо ручного счётчика.
-function computeLiberOStatsFromDiary(){
-  const counts = Object.fromEntries(LIBER_O.map(p => [p.id, 0]));
+// Единый разбор лога практик из архива дневника — строки вида
+// "10:00-10:05 LBRP – комментарий" — переиспользуется всеми счётчиками.
+function extractDiaryPracticeNames(){
+  const names = [];
   const lineRe = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s+(.+?)(?:\s+[–-]\s+.*)?$/;
   (state.diary.history || []).forEach(h => {
     (h.text || '').split('\n').forEach(line => {
       const m = line.match(lineRe);
-      if(!m) return;
-      const id = matchLiberOId(m[1]);
-      if(id) counts[id]++;
+      if(m) names.push(m[1]);
     });
   });
+  return names;
+}
+
+function computeLiberOStatsFromDiary(){
+  const counts = Object.fromEntries(LIBER_O.map(p => [p.id, 0]));
+  extractDiaryPracticeNames().forEach(name => {
+    const id = matchLiberOId(name);
+    if(id) counts[id]++;
+  });
   return counts;
+}
+
+// Liber HHH состоит из трёх глав (MMM, AAA, SSS) — засчитываем сессию,
+// если название практики в дневнике содержит любое из этих обозначений.
+const HHH_ALIASES = ['hhh', 'ххх', 'mmm', 'ммм', 'aaa', 'ааа', 'sss', 'ссс'];
+
+function matchesHHH(name){
+  const n = (name||'').toLowerCase();
+  return HHH_ALIASES.some(a => n.includes(a));
+}
+
+function computeHHHCountFromDiary(){
+  return extractDiaryPracticeNames().filter(matchesHHH).length;
 }
 
 function defaultState(){
@@ -1157,6 +1179,9 @@ function renderLiberO(){
       </div>
     </div>
   `).join('');
+
+  const hhhEl = document.getElementById('cnt_hhh');
+  if(hhhEl) hhhEl.textContent = computeHHHCountFromDiary();
 }
 
 function renderZelator(){
